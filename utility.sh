@@ -1,4 +1,5 @@
-# Функция для вывода справки
+#!/bin/bash
+
 print_help() {
     echo "Usage: $0 [options]"
     echo "Options:"
@@ -9,38 +10,26 @@ print_help() {
     echo "  -e PATH, --errors PATH Redirect error messages to the specified file."
 }
 
-# Функция для обработки аргумента -u или --users
-list_users() {
-    getent passwd | cut -d: -f1,6 | sort
-}
+# Определение длинных опций
+OPTIONS=$(getopt -o uphl:e: --long users,processes,help,log:,errors: -- "$@")
 
-# Функция для обработки аргумента -p или --processes
-list_processes() {
-    ps -e --sort pid
-}
+# Проверка на ошибку
+if [ $? -ne 0 ]; then
+    print_help
+    exit 1
+fi
 
-# Функция для обработки файла логов
-output_to_log() {
-    local log_path="$1"
-    if [ ! -d "$(dirname "$log_path")" ]; then
-        echo "Error: Directory for log file '$log_path' does not exist." >&2
-        exit 1
-    fi
-    exec > "$log_path" 2>&1
-}
+# Управление опциями, как аргументами, после getopt
+eval set -- "$OPTIONS"
 
-# Функция для обработки ошибок
-output_errors_to_log() {
-    local error_path="$1"
-    if [ ! -d "$(dirname "$error_path")" ]; then
-        echo "Error: Directory for error file '$error_path' does not exist." >&2
-        exit 1
-    fi
-    exec 2> "$error_path"
-}
+# Переменные для опций
+action_users=false
+action_processes=false
+log_file=""
+error_file=""
 
 # Обработка аргументов командной строки
-while [[ $# -gt 0 ]]; do
+while true; do
     case "$1" in
         -u|--users)
             action_users=true
@@ -55,22 +44,16 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         -l|--log)
-            if [[ -n "$2" && ! "$2" =~ ^- ]]; then
-                log_file="$2"
-                shift 2
-            else
-                echo "Error: Missing argument for -l|--log option." >&2
-                exit 1
-            fi
+            log_file="$2"
+            shift 2
             ;;
         -e|--errors)
-            if [[ -n "$2" && ! "$2" =~ ^- ]]; then
-                error_file="$2"
-                shift 2
-            else
-                echo "Error: Missing argument for -e|--errors option." >&2
-                exit 1
-            fi
+            error_file="$2"
+            shift 2
+            ;;
+        --)
+            shift
+            break
             ;;
         *)
             echo "Error: Unknown option '$1'." >&2
@@ -81,22 +64,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Обработка вывода
-if [ "$action_users" ]; then
-    if [ -n "$log_file" ]; then
-        output_to_log "$log_file"
-    fi
-    if [ -n "$error_file" ]; then
-        output_errors_to_log "$error_file"
-    fi
-    list_users
+if [ -n "$log_file" ]; then
+    exec > "$log_file" 2>&1
 fi
 
-if [ "$action_processes" ]; then
-    if [ -n "$log_file" ]; then
-        output_to_log "$log_file"
-    fi
-    if [ -n "$error_file" ]; then
-        output_errors_to_log "$error_file"
-    fi
-    list_processes
+if [ -n "$error_file" ]; then
+    exec 2> "$error_file"
+fi
+
+if [ "$action_users" = true ]; then
+    getent passwd | cut -d: -f1,6 | sort
+fi
+
+if [ "$action_processes" = true ]; then
+    ps -e --sort pid
 fi
